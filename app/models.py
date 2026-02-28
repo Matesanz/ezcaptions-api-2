@@ -9,6 +9,8 @@ __all__ = [
     "CaptionsWord",
     "CaptionsEvent",
     "VideoTranscribeRequest",
+    "BurnRequest",
+    "BurnJob",
 ]
 
 
@@ -88,9 +90,53 @@ class Captions(BaseModel):
     def full_text(self) -> str:
         return " ".join(event.full_text for event in self.events)
 
+    def to_ass(self) -> str:
+        scaled = "yes" if self.info.ScaledBorderAndShadow else "no"
+        lines = [
+            "[Script Info]",
+            f"Title: {self.info.Title}",
+            f"WrapStyle: {self.info.WrapStyle}",
+            f"ScaledBorderAndShadow: {scaled}",
+            "",
+            "[V4+ Styles]",
+            "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding",
+        ]
+        for s in self.styles:
+            lines.append(
+                f"Style: {s.Name},{s.Fontname},{s.Fontsize},{s.PrimaryColour},"
+                f"{s.SecondaryColour},{s.OutlineColour},{s.BackColour},"
+                f"{s.Bold},{s.Italic},{s.Underline},{s.StrikeOut},"
+                f"{s.ScaleX},{s.ScaleY},{s.Spacing},{s.Angle},"
+                f"{s.BorderStyle},{s.Outline},{s.Shadow},{s.Alignment},"
+                f"{s.MarginL},{s.MarginR},{s.MarginV},{s.Encoding}"
+            )
+        lines += [
+            "",
+            "[Events]",
+            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text",
+        ]
+        for e in self.events:
+            lines.append(
+                f"Dialogue: {e.Layer},{e.start_time},{e.end_time},{e.Style},"
+                f"{e.Name},{e.MarginL},{e.MarginR},{e.MarginV},{e.Effect},{e.full_text}"
+            )
+        return "\n".join(lines) + "\n"
+
 
 class VideoTranscribeRequest(BaseModel):
     url: str
     title: str = "Default Title"
     language: str | None = None
     speech_model: Literal["best", "nano", "universal", "slam_1"] = "nano"
+
+
+class BurnRequest(BaseModel):
+    video_url: str
+
+
+class BurnJob(BaseModel):
+    id: str
+    caption_id: str | None
+    status: str
+    output_url: str | None = None
+    error: str | None = None

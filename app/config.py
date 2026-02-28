@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     supabase_url: str
     supabase_key: str
     assemblyai_key: str
+    gcs_bucket: str
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
