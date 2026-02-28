@@ -10,23 +10,17 @@ jobs:
     runs-on: ubuntu-latest
     concurrency: release
     permissions:
-      contents: write
-      id-token: write
+      contents: write  # push version commit + tag
 
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
+          fetch-depth: 0  # full history so semantic-release can read all commits
 
       - name: Install uv
-        run: pip install uv
-
-      - name: Install dependencies
-        run: uv sync
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
 
       - name: Python Semantic Release
         uses: python-semantic-release/python-semantic-release@v10.5.3
