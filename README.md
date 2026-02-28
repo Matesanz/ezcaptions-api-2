@@ -10,6 +10,7 @@ FastAPI service for managing ASS subtitle captions, backed by Supabase.
    ```env
    SUPABASE_URL=https://your-project.supabase.co
    SUPABASE_KEY=your-anon-or-service-role-key
+   ASSEMBLYAI_KEY=your-assemblyai-api-key
    ```
 
 ## Commands
@@ -34,3 +35,4 @@ Swagger docs available at `http://localhost:8000/docs` once running.
 | `GET` | `/captions/{id}` | Get by id |
 | `PUT` | `/captions/{id}` | Update by id |
 | `DELETE` | `/captions/{id}` | Delete by id |
+| `POST` | `/captions/from-video` | Transcribe a video URL into captions (requires `url`, optional `title`, `language`, `speech_model`) |
