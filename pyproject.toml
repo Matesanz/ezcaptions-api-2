@@ -1,10 +1,11 @@
 [project]
-name = "ass-api-2"
+name = "ezCaptions"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "assemblyai>=0.52.4",
     "fastapi>=0.134.0",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
@@ -16,4 +17,19 @@ dependencies = [
 dev = [
     "httpx>=0.28.1",
     "pytest>=9.0.2",
+    "python-semantic-release>=9.0.0",
 ]
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+version_variables = ["app/__init__.py:__version__"]
+commit_message = "🔖 v{version}"
+commit_parser = "emoji"
+
+[tool.semantic_release.commit_parser_options]
+major_tags = ["💥"]
+minor_tags = ["✨", "🚑", "🎉"]
+patch_tags = ["🐛", "🩹", "🔒"]
+
+[tool.semantic_release.changelog.default_templates]
+changelog_file = "CHANGELOG.md"

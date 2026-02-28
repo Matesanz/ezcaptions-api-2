@@ -1,7 +1,8 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from app.main import app, get_repo
+from app.models import Captions
 
 RECORD = {"id": "abc", "title": "Test", "data": {}}
 
@@ -89,3 +90,40 @@ def test_update_captions_not_found(client):
 def test_delete_captions(client):
     override(mock_repo())
     assert client.delete("/captions/abc").status_code == 204
+
+
+# --- POST /captions/from-video ---
+
+def test_transcribe_video(client):
+    override(mock_repo(create=RECORD))
+    with patch("app.main.transcribe", return_value=Captions()):
+        res = client.post("/captions/from-video", json={"url": "https://example.com/video.mp4"})
+    assert res.status_code == 201
+    assert res.json() == RECORD
+
+
+def test_transcribe_video_forwards_all_params(client):
+    override(mock_repo(create=RECORD))
+    with patch("app.main.transcribe", return_value=Captions()) as mock_t:
+        client.post("/captions/from-video", json={
+            "url": "https://example.com/video.mp4",
+            "title": "My Video",
+            "language": "fr",
+            "speech_model": "nano",
+        })
+    mock_t.assert_called_once_with("https://example.com/video.mp4", "My Video", "fr", "nano")
+
+
+def test_transcribe_video_defaults(client):
+    override(mock_repo(create=RECORD))
+    with patch("app.main.transcribe", return_value=Captions()) as mock_t:
+        client.post("/captions/from-video", json={"url": "https://example.com/video.mp4"})
+    mock_t.assert_called_once_with("https://example.com/video.mp4", "Default Title", None, "nano")
+
+
+def test_transcribe_video_error(client):
+    override(mock_repo())
+    with patch("app.main.transcribe", side_effect=RuntimeError("Audio file not found")):
+        res = client.post("/captions/from-video", json={"url": "https://example.com/bad.mp4"})
+    assert res.status_code == 422
+    assert "Audio file not found" in res.json()["detail"]

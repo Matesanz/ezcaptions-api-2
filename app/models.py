@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 __all__ = [
@@ -6,6 +8,7 @@ __all__ = [
     "CaptionsStyle",
     "CaptionsWord",
     "CaptionsEvent",
+    "VideoTranscribeRequest",
 ]
 
 
@@ -84,3 +87,10 @@ class Captions(BaseModel):
     @property
     def full_text(self) -> str:
         return " ".join(event.full_text for event in self.events)
+
+
+class VideoTranscribeRequest(BaseModel):
+    url: str
+    title: str = "Default Title"
+    language: str | None = None
+    speech_model: Literal["best", "nano", "universal", "slam_1"] = "nano"

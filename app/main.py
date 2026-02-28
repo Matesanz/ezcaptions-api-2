@@ -2,8 +2,9 @@ from fastapi import FastAPI, HTTPException, Depends
 from supabase import Client
 
 from .database import get_supabase
-from .models import Captions
+from .models import Captions, VideoTranscribeRequest
 from .repository import CaptionsRepository
+from .transcription import transcribe
 from . import __version__, __title__
 
 app = FastAPI(title=__title__, version=__version__)
@@ -55,3 +56,12 @@ def update_captions(id: str, captions: Captions, repo: CaptionsRepository = Depe
 @app.delete("/captions/{id}", status_code=204)
 def delete_captions(id: str, repo: CaptionsRepository = Depends(get_repo)):
     repo.delete(id)
+
+
+@app.post("/captions/from-video", status_code=201)
+def transcribe_video(request: VideoTranscribeRequest, repo: CaptionsRepository = Depends(get_repo)):
+    try:
+        captions = transcribe(request.url, request.title, request.language, request.speech_model)
+    except RuntimeError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return repo.create(captions)
