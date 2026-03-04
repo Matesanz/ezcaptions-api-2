@@ -2,10 +2,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 from app.database import get_supabase
-from app.main import app, get_repo, get_burn_repo
+from app.main import app, get_repo, get_video_repo, get_burn_repo
 from app.models import Captions
 
-RECORD = {"id": "abc", "title": "Test", "data": {}}
+RECORD = {"id": "abc", "title": "Test", "data": {}, "video_id": None}
+VIDEO_RECORD = {"id": "vid-1", "url": "https://example.com/video.mp4"}
 
 
 @pytest.fixture
@@ -15,6 +16,10 @@ def client():
 
 def override(repo):
     app.dependency_overrides[get_repo] = lambda: repo
+
+
+def override_video_repo(video_repo):
+    app.dependency_overrides[get_video_repo] = lambda: video_repo
 
 
 def override_burn(burn_repo):
@@ -103,6 +108,7 @@ def test_delete_captions(client):
 
 def test_transcribe_video(client):
     override(mock_repo(create=RECORD))
+    override_video_repo(mock_repo(create=VIDEO_RECORD))
     with patch("app.main.transcribe", return_value=Captions()):
         res = client.post("/captions/from-video", json={"url": "https://example.com/video.mp4"})
     assert res.status_code == 201
@@ -111,6 +117,7 @@ def test_transcribe_video(client):
 
 def test_transcribe_video_forwards_all_params(client):
     override(mock_repo(create=RECORD))
+    override_video_repo(mock_repo(create=VIDEO_RECORD))
     with patch("app.main.transcribe", return_value=Captions()) as mock_t:
         client.post("/captions/from-video", json={
             "url": "https://example.com/video.mp4",
@@ -123,13 +130,35 @@ def test_transcribe_video_forwards_all_params(client):
 
 def test_transcribe_video_defaults(client):
     override(mock_repo(create=RECORD))
+    override_video_repo(mock_repo(create=VIDEO_RECORD))
     with patch("app.main.transcribe", return_value=Captions()) as mock_t:
         client.post("/captions/from-video", json={"url": "https://example.com/video.mp4"})
     mock_t.assert_called_once_with("https://example.com/video.mp4", "Default Title", None, "nano")
 
 
+def test_transcribe_video_creates_video_record(client):
+    captions_repo = mock_repo(create=RECORD)
+    video_repo = mock_repo(create=VIDEO_RECORD)
+    override(captions_repo)
+    override_video_repo(video_repo)
+    with patch("app.main.transcribe", return_value=Captions()):
+        client.post("/captions/from-video", json={"url": "https://example.com/video.mp4"})
+    video_repo.create.assert_called_once_with("https://example.com/video.mp4")
+
+
+def test_transcribe_video_links_video_id_to_captions(client):
+    captions_repo = mock_repo(create=RECORD)
+    override(captions_repo)
+    override_video_repo(mock_repo(create=VIDEO_RECORD))
+    with patch("app.main.transcribe", return_value=Captions()):
+        client.post("/captions/from-video", json={"url": "https://example.com/video.mp4"})
+    captions_repo.create.assert_called_once()
+    assert captions_repo.create.call_args.kwargs["video_id"] == "vid-1"
+
+
 def test_transcribe_video_error(client):
     override(mock_repo())
+    override_video_repo(mock_repo())
     with patch("app.main.transcribe", side_effect=RuntimeError("Audio file not found")):
         res = client.post("/captions/from-video", json={"url": "https://example.com/bad.mp4"})
     assert res.status_code == 422
@@ -143,6 +172,7 @@ JOB_RECORD = {"id": "job-1", "caption_id": "abc", "status": "pending", "output_u
 
 def test_burn_captions_returns_202(client):
     override(mock_repo(get=RECORD))
+    override_video_repo(mock_repo())
     override_burn(mock_repo(create=JOB_RECORD))
     with patch("app.main.burn_video", new_callable=AsyncMock):
         res = client.post("/captions/abc/burn", json={"video_url": "https://example.com/video.mp4"})
@@ -151,6 +181,7 @@ def test_burn_captions_returns_202(client):
 
 def test_burn_captions_returns_job(client):
     override(mock_repo(get=RECORD))
+    override_video_repo(mock_repo())
     override_burn(mock_repo(create=JOB_RECORD))
     with patch("app.main.burn_video", new_callable=AsyncMock):
         res = client.post("/captions/abc/burn", json={"video_url": "https://example.com/video.mp4"})
@@ -161,13 +192,61 @@ def test_burn_captions_returns_job(client):
 
 def test_burn_captions_not_found(client):
     override(mock_repo(get=None))
+    override_video_repo(mock_repo())
     override_burn(mock_repo())
     res = client.post("/captions/missing/burn", json={"video_url": "https://example.com/video.mp4"})
     assert res.status_code == 404
 
 
+def test_burn_uses_explicit_video_url(client):
+    override(mock_repo(get=RECORD))
+    override_video_repo(mock_repo())
+    override_burn(mock_repo(create=JOB_RECORD))
+    with patch("app.main.burn_video", new_callable=AsyncMock) as mock_bv:
+        client.post("/captions/abc/burn", json={"video_url": "https://example.com/video.mp4"})
+    assert mock_bv.call_args.args[2] == "https://example.com/video.mp4"
+
+
+def test_burn_uses_linked_video_url_when_no_override(client):
+    record_with_video = {**RECORD, "video_id": "vid-1"}
+    override(mock_repo(get=record_with_video))
+    override_video_repo(mock_repo(get=VIDEO_RECORD))
+    override_burn(mock_repo(create=JOB_RECORD))
+    with patch("app.main.burn_video", new_callable=AsyncMock) as mock_bv:
+        client.post("/captions/abc/burn", json={})
+    assert mock_bv.call_args.args[2] == "https://example.com/video.mp4"
+
+
+def test_burn_explicit_url_overrides_linked_video(client):
+    record_with_video = {**RECORD, "video_id": "vid-1"}
+    override(mock_repo(get=record_with_video))
+    override_video_repo(mock_repo(get=VIDEO_RECORD))
+    override_burn(mock_repo(create=JOB_RECORD))
+    with patch("app.main.burn_video", new_callable=AsyncMock) as mock_bv:
+        client.post("/captions/abc/burn", json={"video_url": "https://example.com/override.mp4"})
+    assert mock_bv.call_args.args[2] == "https://example.com/override.mp4"
+
+
+def test_burn_no_url_no_linked_video_returns_422(client):
+    override(mock_repo(get=RECORD))   # video_id is None
+    override_video_repo(mock_repo())
+    override_burn(mock_repo())
+    res = client.post("/captions/abc/burn", json={})
+    assert res.status_code == 422
+
+
+def test_burn_linked_video_not_found_returns_404(client):
+    record_with_video = {**RECORD, "video_id": "vid-missing"}
+    override(mock_repo(get=record_with_video))
+    override_video_repo(mock_repo(get=None))
+    override_burn(mock_repo())
+    res = client.post("/captions/abc/burn", json={})
+    assert res.status_code == 404
+
+
 def test_burn_schedules_background_task(client):
     override(mock_repo(get=RECORD))
+    override_video_repo(mock_repo())
     override_burn(mock_repo(create=JOB_RECORD))
     with patch("app.main.burn_video", new_callable=AsyncMock) as mock_bv:
         client.post("/captions/abc/burn", json={"video_url": "https://example.com/video.mp4"})

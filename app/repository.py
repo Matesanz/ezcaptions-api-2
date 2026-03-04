@@ -4,6 +4,20 @@ from .models import Captions
 
 TABLE = "captions"
 BURN_JOBS_TABLE = "burn_jobs"
+VIDEOS_TABLE = "videos"
+
+
+class VideoRepository:
+    def __init__(self, client: Client):
+        self._client = client
+
+    def create(self, url: str) -> dict:
+        res = self._client.table(VIDEOS_TABLE).insert({"url": url}).execute()
+        return res.data[0]
+
+    def get(self, id: str) -> dict | None:
+        res = self._client.table(VIDEOS_TABLE).select("*").eq("id", id).execute()
+        return res.data[0] if res.data else None
 
 
 class BurnJobRepository:
@@ -35,10 +49,11 @@ class CaptionsRepository:
         res = self._client.table(TABLE).select("*").execute()
         return res.data
 
-    def create(self, captions: Captions) -> dict:
+    def create(self, captions: Captions, video_id: str | None = None) -> dict:
         res = self._client.table(TABLE).insert({
             "title": captions.info.Title,
             "data": captions.model_dump(),
+            "video_id": video_id,
         }).execute()
         return res.data[0]
 

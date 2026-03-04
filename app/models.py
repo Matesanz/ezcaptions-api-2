@@ -131,7 +131,7 @@ class VideoTranscribeRequest(BaseModel):
 
 
 class BurnRequest(BaseModel):
-    video_url: str
+    video_url: str | None = None
 
 
 class BurnJob(BaseModel):

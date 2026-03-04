@@ -4,7 +4,7 @@ from supabase import Client
 from .burning import burn_video
 from .database import get_supabase
 from .models import BurnJob, BurnRequest, Captions, VideoTranscribeRequest
-from .repository import BurnJobRepository, CaptionsRepository
+from .repository import BurnJobRepository, CaptionsRepository, VideoRepository
 from .transcription import transcribe
 from . import __version__, __title__
 
@@ -13,6 +13,10 @@ app = FastAPI(title=__title__, version=__version__)
 
 def get_repo(client: Client = Depends(get_supabase)) -> CaptionsRepository:
     return CaptionsRepository(client)
+
+
+def get_video_repo(client: Client = Depends(get_supabase)) -> VideoRepository:
+    return VideoRepository(client)
 
 
 def get_burn_repo(client: Client = Depends(get_supabase)) -> BurnJobRepository:
@@ -64,12 +68,17 @@ def delete_captions(id: str, repo: CaptionsRepository = Depends(get_repo)):
 
 
 @app.post("/captions/from-video", status_code=201)
-def transcribe_video(request: VideoTranscribeRequest, repo: CaptionsRepository = Depends(get_repo)):
+def transcribe_video(
+    request: VideoTranscribeRequest,
+    repo: CaptionsRepository = Depends(get_repo),
+    video_repo: VideoRepository = Depends(get_video_repo),
+):
     try:
         captions = transcribe(request.url, request.title, request.language, request.speech_model)
     except RuntimeError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    return repo.create(captions)
+    video = video_repo.create(request.url)
+    return repo.create(captions, video_id=video["id"])
 
 
 @app.post("/captions/{id}/burn", status_code=202)
@@ -78,14 +87,25 @@ def burn_captions(
     request: BurnRequest,
     background_tasks: BackgroundTasks,
     repo: CaptionsRepository = Depends(get_repo),
+    video_repo: VideoRepository = Depends(get_video_repo),
     burn_repo: BurnJobRepository = Depends(get_burn_repo),
     client: Client = Depends(get_supabase),
 ) -> BurnJob:
     record = repo.get(id)
     if not record:
         raise HTTPException(status_code=404, detail="Not found")
+
+    video_url = request.video_url
+    if not video_url:
+        if not record.get("video_id"):
+            raise HTTPException(status_code=422, detail="No video linked to this caption")
+        video = video_repo.get(record["video_id"])
+        if not video:
+            raise HTTPException(status_code=404, detail="Linked video not found")
+        video_url = video["url"]
+
     job = burn_repo.create(id)
-    background_tasks.add_task(burn_video, job["id"], id, request.video_url, client)
+    background_tasks.add_task(burn_video, job["id"], id, video_url, client)
     return BurnJob(**job)
 
 

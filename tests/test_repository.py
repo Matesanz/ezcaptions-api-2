@@ -1,5 +1,5 @@
 from unittest.mock import MagicMock
-from app.repository import BurnJobRepository, CaptionsRepository
+from app.repository import BurnJobRepository, CaptionsRepository, VideoRepository
 from app.models import Captions, CaptionsInfo, CaptionsEvent, CaptionsWord
 
 RECORD = {"id": "abc", "title": "Test", "data": {}}
@@ -14,6 +14,42 @@ def make_client(*, select_data=None, eq_data=None, insert_data=None, update_data
     client.table.return_value.update.return_value.eq.return_value.execute.return_value.data = update_data or []
     return client
 
+
+# =============================================================================
+# VideoRepository
+# =============================================================================
+
+VIDEO_RECORD = {"id": "vid-1", "url": "https://example.com/video.mp4"}
+
+
+# --- create ---
+
+def test_video_create():
+    repo = VideoRepository(make_client(insert_data=[VIDEO_RECORD]))
+    assert repo.create("https://example.com/video.mp4") == VIDEO_RECORD
+
+
+def test_video_create_inserts_url():
+    client = make_client(insert_data=[VIDEO_RECORD])
+    VideoRepository(client).create("https://example.com/video.mp4")
+    client.table.return_value.insert.assert_called_once_with({"url": "https://example.com/video.mp4"})
+
+
+# --- get ---
+
+def test_video_get_found():
+    repo = VideoRepository(make_client(eq_data=[VIDEO_RECORD]))
+    assert repo.get("vid-1") == VIDEO_RECORD
+
+
+def test_video_get_not_found():
+    repo = VideoRepository(make_client())
+    assert repo.get("missing") is None
+
+
+# =============================================================================
+# CaptionsRepository
+# =============================================================================
 
 # --- list ---
 
@@ -45,6 +81,20 @@ def test_create_returns_row():
     repo = CaptionsRepository(make_client(insert_data=[RECORD]))
     result = repo.create(Captions(info=CaptionsInfo(Title="Test")))
     assert result == RECORD
+
+
+def test_create_with_video_id():
+    client = make_client(insert_data=[RECORD])
+    CaptionsRepository(client).create(Captions(), video_id="vid-1")
+    payload = client.table.return_value.insert.call_args.args[0]
+    assert payload["video_id"] == "vid-1"
+
+
+def test_create_without_video_id():
+    client = make_client(insert_data=[RECORD])
+    CaptionsRepository(client).create(Captions())
+    payload = client.table.return_value.insert.call_args.args[0]
+    assert payload["video_id"] is None
 
 
 # --- update ---
