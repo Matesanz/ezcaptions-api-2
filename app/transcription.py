@@ -23,12 +23,15 @@ def transcribe(
     if transcript.error:
         raise RuntimeError(transcript.error)
 
-    words = [
-        CaptionsWord(text=w.text, start=w.start, end=w.end)
-        for w in (transcript.words or [])
+    events = [
+        CaptionsEvent(Words=[
+            CaptionsWord(text=w.text, start=w.start, end=w.end)
+            for w in sentence.words
+        ])
+        for sentence in transcript.get_sentences()
     ]
 
     return Captions(
         info=CaptionsInfo(Title=title),
-        events=[CaptionsEvent(Words=words)],
+        events=events,
     )

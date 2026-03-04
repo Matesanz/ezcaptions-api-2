@@ -12,11 +12,16 @@ def make_word(text, start, end):
     return w
 
 
-def mock_aai(words=None, error=None):
-    """Return patched aai and get_settings mocks for use in tests."""
+def make_sentence(*words):
+    s = MagicMock()
+    s.words = list(words)
+    return s
+
+
+def mock_aai(sentences=None, error=None):
     transcript = MagicMock()
     transcript.error = error
-    transcript.words = words
+    transcript.get_sentences.return_value = sentences or []
 
     mock = MagicMock()
     mock.Transcriber.return_value.transcribe.return_value = transcript
@@ -25,16 +30,31 @@ def mock_aai(words=None, error=None):
 
 # --- transcribe() ---
 
-def test_transcribe_maps_words_to_captions():
-    words = [make_word("Hello", 0, 500), make_word("world", 600, 1000)]
+def test_transcribe_maps_sentences_to_events():
+    sentences = [
+        make_sentence(make_word("Hello", 0, 500)),
+        make_sentence(make_word("world", 600, 1000)),
+    ]
 
     with patch("app.transcription.get_settings") as mock_gs, \
-         patch("app.transcription.aai", mock_aai(words=words)):
+         patch("app.transcription.aai", mock_aai(sentences=sentences)):
         mock_gs.return_value.assemblyai_key = "test-key"
         result = transcribe("https://example.com/video.mp4", "My Video")
 
     assert result.info.Title == "My Video"
-    assert len(result.events) == 1
+    assert len(result.events) == 2
+
+
+def test_transcribe_maps_words_within_sentence():
+    sentences = [
+        make_sentence(make_word("Hello", 0, 500), make_word("world", 600, 1000)),
+    ]
+
+    with patch("app.transcription.get_settings") as mock_gs, \
+         patch("app.transcription.aai", mock_aai(sentences=sentences)):
+        mock_gs.return_value.assemblyai_key = "test-key"
+        result = transcribe("https://example.com/video.mp4")
+
     assert len(result.events[0].Words) == 2
     assert result.events[0].Words[0].text == "Hello"
     assert result.events[0].Words[0].start == 0
@@ -42,31 +62,22 @@ def test_transcribe_maps_words_to_captions():
     assert result.events[0].Words[1].text == "world"
 
 
+def test_transcribe_empty_sentences():
+    with patch("app.transcription.get_settings") as mock_gs, \
+         patch("app.transcription.aai", mock_aai(sentences=[])):
+        mock_gs.return_value.assemblyai_key = "test-key"
+        result = transcribe("https://example.com/video.mp4")
+
+    assert result.events == []
+
+
 def test_transcribe_uses_default_title():
     with patch("app.transcription.get_settings") as mock_gs, \
-         patch("app.transcription.aai", mock_aai(words=[])):
+         patch("app.transcription.aai", mock_aai()):
         mock_gs.return_value.assemblyai_key = "test-key"
         result = transcribe("https://example.com/video.mp4")
 
     assert result.info.Title == "Default Title"
-
-
-def test_transcribe_empty_words():
-    with patch("app.transcription.get_settings") as mock_gs, \
-         patch("app.transcription.aai", mock_aai(words=[])):
-        mock_gs.return_value.assemblyai_key = "test-key"
-        result = transcribe("https://example.com/video.mp4")
-
-    assert result.events[0].Words == []
-
-
-def test_transcribe_none_words_treated_as_empty():
-    with patch("app.transcription.get_settings") as mock_gs, \
-         patch("app.transcription.aai", mock_aai(words=None)):
-        mock_gs.return_value.assemblyai_key = "test-key"
-        result = transcribe("https://example.com/video.mp4")
-
-    assert result.events[0].Words == []
 
 
 def test_transcribe_raises_on_error():
@@ -78,7 +89,7 @@ def test_transcribe_raises_on_error():
 
 
 def test_transcribe_sets_api_key():
-    mock = mock_aai(words=[])
+    mock = mock_aai()
     with patch("app.transcription.get_settings") as mock_gs, \
          patch("app.transcription.aai", mock):
         mock_gs.return_value.assemblyai_key = "my-secret-key"
@@ -88,7 +99,7 @@ def test_transcribe_sets_api_key():
 
 
 def test_transcribe_language_detection_when_no_language():
-    mock = mock_aai(words=[])
+    mock = mock_aai()
     with patch("app.transcription.get_settings") as mock_gs, \
          patch("app.transcription.aai", mock):
         mock_gs.return_value.assemblyai_key = "test-key"
@@ -102,7 +113,7 @@ def test_transcribe_language_detection_when_no_language():
 
 
 def test_transcribe_language_code_disables_detection():
-    mock = mock_aai(words=[])
+    mock = mock_aai()
     with patch("app.transcription.get_settings") as mock_gs, \
          patch("app.transcription.aai", mock):
         mock_gs.return_value.assemblyai_key = "test-key"
@@ -116,7 +127,7 @@ def test_transcribe_language_code_disables_detection():
 
 
 def test_transcribe_passes_speech_model():
-    mock = mock_aai(words=[])
+    mock = mock_aai()
     with patch("app.transcription.get_settings") as mock_gs, \
          patch("app.transcription.aai", mock):
         mock_gs.return_value.assemblyai_key = "test-key"
