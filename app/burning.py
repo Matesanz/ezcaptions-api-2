@@ -15,6 +15,8 @@ async def burn_video(job_id: str, caption_id: str, video_url: str, supabase: Cli
     job_repo = BurnJobRepository(supabase)
     captions_repo = CaptionsRepository(supabase)
 
+    video_url = video_url.strip()
+
     job_repo.update_status(job_id, "processing")
     try:
         record = captions_repo.get(caption_id)
@@ -57,5 +59,18 @@ async def burn_video(job_id: str, caption_id: str, video_url: str, supabase: Cli
 
         job_repo.update_status(job_id, "done", output_url=public_url)
 
+    except httpx.HTTPStatusError as e:
+        error_msg = f"Failed to download video: {e.response.status_code} {e.response.reason_phrase} for URL: '{video_url}'"
+        job_repo.update_status(job_id, "failed", error=error_msg)
+    except httpx.RequestError as e:
+        error_msg = f"Network error while downloading video from URL '{video_url}': {str(e)}"
+        job_repo.update_status(job_id, "failed", error=error_msg)
+    except RuntimeError as e:
+        error_msg = f"FFmpeg failed: {str(e)}"
+        job_repo.update_status(job_id, "failed", error=error_msg)
+    except ValueError as e:
+        error_msg = f"Invalid data: {str(e)}"
+        job_repo.update_status(job_id, "failed", error=error_msg)
     except Exception as e:
-        job_repo.update_status(job_id, "failed", error=str(e))
+        error_msg = f"Unexpected error during burning: {type(e).__name__}: {str(e)}"
+        job_repo.update_status(job_id, "failed", error=error_msg)

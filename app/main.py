@@ -3,7 +3,7 @@ from supabase import Client
 
 from .burning import burn_video
 from .database import get_supabase
-from .models import BurnJob, BurnRequest, Captions, VideoTranscribeRequest
+from .models import BurnJob, Captions, VideoTranscribeRequest
 from .repository import BurnJobRepository, CaptionsRepository, VideoRepository
 from .transcription import transcribe
 from . import __version__, __title__
@@ -73,18 +73,18 @@ def transcribe_video(
     repo: CaptionsRepository = Depends(get_repo),
     video_repo: VideoRepository = Depends(get_video_repo),
 ):
+    url = request.url.strip()
     try:
-        captions = transcribe(request.url, request.title, request.language, request.speech_model)
+        captions = transcribe(url, request.title, request.language, request.speech_model)
     except RuntimeError as e:
         raise HTTPException(status_code=422, detail=str(e))
-    video = video_repo.create(request.url)
+    video = video_repo.create(url)
     return repo.create(captions, video_id=video["id"])
 
 
 @app.post("/captions/{id}/burn", status_code=202)
 def burn_captions(
     id: str,
-    request: BurnRequest,
     background_tasks: BackgroundTasks,
     repo: CaptionsRepository = Depends(get_repo),
     video_repo: VideoRepository = Depends(get_video_repo),
@@ -95,14 +95,14 @@ def burn_captions(
     if not record:
         raise HTTPException(status_code=404, detail="Not found")
 
-    video_url = request.video_url
-    if not video_url:
-        if not record.get("video_id"):
-            raise HTTPException(status_code=422, detail="No video linked to this caption")
-        video = video_repo.get(record["video_id"])
-        if not video:
-            raise HTTPException(status_code=404, detail="Linked video not found")
-        video_url = video["url"]
+    if not record.get("video_id"):
+        raise HTTPException(status_code=422, detail="No video linked to this caption")
+    
+    video = video_repo.get(record["video_id"])
+    if not video:
+        raise HTTPException(status_code=404, detail="Linked video not found")
+    
+    video_url = video["url"]
 
     job = burn_repo.create(id)
     background_tasks.add_task(burn_video, job["id"], id, video_url, client)

@@ -35,7 +35,7 @@ class BurnJobRepository:
     def update_status(self, job_id: str, status: str, output_url: str | None = None, error: str | None = None) -> None:
         payload: dict = {"status": status}
         if output_url is not None:
-            payload["output_url"] = output_url
+            payload["result_url"] = output_url
         if error is not None:
             payload["error"] = error
         self._client.table(BURN_JOBS_TABLE).update(payload).eq("id", job_id).execute()

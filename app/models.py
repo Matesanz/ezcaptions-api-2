@@ -9,7 +9,6 @@ __all__ = [
     "CaptionsWord",
     "CaptionsEvent",
     "VideoTranscribeRequest",
-    "BurnRequest",
     "BurnJob",
 ]
 
@@ -130,13 +129,9 @@ class VideoTranscribeRequest(BaseModel):
     speech_model: Literal["best", "nano", "universal", "slam_1"] = "nano"
 
 
-class BurnRequest(BaseModel):
-    video_url: str | None = None
-
-
 class BurnJob(BaseModel):
     id: str
     caption_id: str | None
     status: str
-    output_url: str | None = None
+    result_url: str | None = None
     error: str | None = None

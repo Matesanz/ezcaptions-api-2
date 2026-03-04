@@ -143,7 +143,7 @@ def test_caption_not_found_sets_failed():
         run(burn_video(JOB_ID, CAPTION_ID, VIDEO_URL, MagicMock()))
 
     job_repo.update_status.assert_called_with(
-        JOB_ID, "failed", error=f"Caption {CAPTION_ID} not found"
+        JOB_ID, "failed", error=f"Invalid data: Caption {CAPTION_ID} not found"
     )
 
 
@@ -202,3 +202,26 @@ def test_gcs_upload_failure_sets_failed():
     final = job_repo.update_status.call_args
     assert final.args[1] == "failed"
     assert "GCS auth failed" in final.kwargs["error"]
+
+
+def test_url_with_whitespace_is_trimmed():
+    job_repo = MagicMock()
+    captions_repo = MagicMock()
+    captions_repo.get.return_value = make_caption_record()
+    
+    mock_client = mock_http_client()
+    url_with_whitespace = f"  {VIDEO_URL}\n "
+
+    with (
+        patch("app.burning.BurnJobRepository", return_value=job_repo),
+        patch("app.burning.CaptionsRepository", return_value=captions_repo),
+        patch("app.burning.httpx.AsyncClient", return_value=mock_client),
+        patch("app.burning.subprocess.run", return_value=mock_subprocess_result()),
+        patch("app.burning.upload_to_gcs", return_value=GCS_URL),
+    ):
+        run(burn_video(JOB_ID, CAPTION_ID, url_with_whitespace, MagicMock()))
+
+    # Verify that httpx.AsyncClient().get() was called with the TRIMMED URL
+    mock_client.get.assert_called_with(VIDEO_URL, follow_redirects=True)
+    job_repo.update_status.assert_called_with(JOB_ID, "done", output_url=GCS_URL)
+
