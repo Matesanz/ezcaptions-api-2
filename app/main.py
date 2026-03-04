@@ -1,10 +1,12 @@
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Depends
+from fastapi.responses import RedirectResponse
 from supabase import Client
 
 from .burning import burn_video
 from .database import get_supabase
 from .models import BurnJob, Captions, VideoTranscribeRequest
 from .repository import BurnJobRepository, CaptionsRepository, VideoRepository
+from .storage import generate_signed_url
 from .transcription import transcribe
 from . import __version__, __title__
 
@@ -119,3 +121,18 @@ def get_burn_job(
     if not job:
         raise HTTPException(status_code=404, detail="Not found")
     return BurnJob(**job)
+
+
+@app.get("/captions/{id}/burn/{job_id}/download")
+def download_burn_output(
+    id: str,
+    job_id: str,
+    burn_repo: BurnJobRepository = Depends(get_burn_repo),
+) -> RedirectResponse:
+    job = burn_repo.get(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Not found")
+    if job["status"] != "done":
+        raise HTTPException(status_code=409, detail="Job is not done yet")
+    signed_url = generate_signed_url(f"burned/{job_id}/output.mp4")
+    return RedirectResponse(url=signed_url, status_code=302)

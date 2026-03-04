@@ -263,3 +263,36 @@ def test_get_burn_job_done(client):
     res = client.get("/captions/abc/burn/job-1")
     assert res.status_code == 200
     assert res.json()["result_url"] == "https://gcs.example.com/out.mp4"
+
+
+# --- GET /captions/{id}/burn/{job_id}/download ---
+
+DONE_JOB = {**JOB_RECORD, "status": "done", "result_url": "burned/job-1/output.mp4"}
+SIGNED_URL = "https://storage.googleapis.com/bucket/burned/job-1/output.mp4?X-Goog-Signature=abc"
+
+
+def test_download_redirects_to_signed_url(client):
+    override_burn(mock_repo(get=DONE_JOB))
+    with patch("app.main.generate_signed_url", return_value=SIGNED_URL):
+        res = client.get("/captions/abc/burn/job-1/download", follow_redirects=False)
+    assert res.status_code == 302
+    assert res.headers["location"] == SIGNED_URL
+
+
+def test_download_not_found(client):
+    override_burn(mock_repo(get=None))
+    res = client.get("/captions/abc/burn/missing/download", follow_redirects=False)
+    assert res.status_code == 404
+
+
+def test_download_job_not_done_returns_409(client):
+    override_burn(mock_repo(get=JOB_RECORD))  # status is "pending"
+    res = client.get("/captions/abc/burn/job-1/download", follow_redirects=False)
+    assert res.status_code == 409
+
+
+def test_download_uses_job_id_for_blob_path(client):
+    override_burn(mock_repo(get=DONE_JOB))
+    with patch("app.main.generate_signed_url", return_value=SIGNED_URL) as mock_sign:
+        client.get("/captions/abc/burn/job-1/download", follow_redirects=False)
+    mock_sign.assert_called_once_with("burned/job-1/output.mp4")
